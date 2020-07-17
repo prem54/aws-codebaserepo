@@ -1,0 +1,110 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: "Lambda function to Start, Stop or Terminate instances with their Name or Id"
+
+Parameters:
+  LambdaExecutionRole:
+    Description: Please enter Lambda execution role.
+    Type: String
+    Default: arn:aws:iam::255825787063:role/service-role/stopEC2Instance-role-a47pwcfc
+
+Resources:
+  StartStopTerminateEC2:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: "Lambda function to Start, Stop or Terminate instances with their Name or Id"
+      Handler: index.handler
+      Runtime: nodejs12.x
+      FunctionName: StartStopTerminateEC2-LambdaFunc
+      Timeout: '8'
+      Role: !Ref LambdaExecutionRole
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          var response = require('cfn-response');
+          exports.handler = async (event, context) => {
+              if(event.RequestType == "Delete"){
+                  return await response.send(event, context, response.SUCCESS);
+              }
+              try {
+                  console.log("RECEIVED EVENT:\n", JSON.stringify(event, null, 2));
+                  return await handleEc2Events(event, context, event.ResourceProperties.region, event.ResourceProperties.instanceIdName, event.ResourceProperties.terminateBy, event.ResourceProperties.action);
+              } catch (e) {
+                  throw e;
+              }
+          };
+          async function handleEc2Events(event, context, region, instanceIdName, terminateBy, action) {
+              var responseStatus = response.FAILED;
+              const responseData = {};
+              try {
+                  const ec2 = new AWS.EC2({region});
+                  if (action === "TERMINATE") {
+                      const ec2InstanceIds = await getInstanceIds(ec2, instanceIdName, terminateBy, ['running', 'stopped']);
+                      if(ec2InstanceIds && ec2InstanceIds.length !== 0){
+                          await ec2.terminateInstances({ InstanceIds: ec2InstanceIds }).promise();
+                          responseData['Terminated-InstanceIds'] = ec2InstanceIds;
+                          responseStatus = response.SUCCESS;
+                      }else{
+                          responseData['Error-Msg']="Please check if Instance Id or Name is correct and Instance is in RUNNING/STOPPED state!!!";
+                      }
+                  }
+                  if (action === "START") {
+                      const ec2InstanceIds = await getInstanceIds(ec2, instanceIdName, terminateBy, ['stopped']);
+                      if(ec2InstanceIds && ec2InstanceIds.length !== 0){
+                          await ec2.startInstances({ InstanceIds: ec2InstanceIds }).promise();
+                          responseData['Terminated-InstanceIds'] = ec2InstanceIds;
+                          responseStatus = response.SUCCESS;
+                      }else{
+                          responseData['Error-Msg']="Please check if Instance Id or Name is correct and Instance is in STOPPED state!!!";
+                      }
+                  }
+                  if (action === "STOP") {
+                      const ec2InstanceIds = await getInstanceIds(ec2, instanceIdName, terminateBy, ['running']);
+                      if(ec2InstanceIds && ec2InstanceIds.length !== 0){
+                          await ec2.stopInstances({ InstanceIds: ec2InstanceIds }).promise();
+                          responseData['Terminated-InstanceIds'] = ec2InstanceIds;
+                          responseStatus = response.SUCCESS;
+                      }else{
+                          responseData['Error-Msg']="Please check if Instance Id or Name is correct and Instance is in RUNNING state!!!";
+                      }
+                  }
+              } catch (e) {
+                  throw e;
+              }
+              return await response.send(event,context,responseStatus,responseData);
+          }
+          async function getInstanceIds(ec2, instanceIdName, terminateBy, instanceCurrentState) {
+              try {
+                  const filters = [{
+                      Name: "instance-state-name",
+                      Values: instanceCurrentState
+                  }];
+                  if(terminateBy == 'INSTANCE_NAME'){
+                      filters.push({
+                          Name: "tag:Name",
+                          Values: [
+                              instanceIdName
+                          ]
+                      })
+                  }else{
+                      filters.push({
+                          Name: "instance-id",
+                          Values: [
+                              instanceIdName
+                          ]
+                      })
+                  }
+                  const ec2Instances = await ec2.describeInstances({
+                      Filters: filters
+                  }).promise();
+                  const instanceIds = [];
+                  for (const reservation of ec2Instances.Reservations) {
+                      for (const instance of reservation.Instances) {
+                          instanceIds.push(instance.InstanceId)
+                      }
+                  }
+                  return instanceIds;
+              } catch (e) {
+                  throw e;
+              }
+          }

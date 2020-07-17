@@ -1,0 +1,40 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Invokes Lambda function to Start, Stop or Terminate instances with their Name or Id.
+
+Parameters:
+  TerminateBy:
+    Description: Select this to terminate instances with their id or name.
+    Type: String
+    Default: INSTANCE_ID
+    AllowedValues:
+        - INSTANCE_ID
+        - INSTANCE_NAME
+  InstanceIdName:
+    Description: Enter instance id or name to terminate.
+    Type: String
+    MinLength: 1
+  Action:
+    Description: Select this to Start/Stop/Terminate instance.
+    Type: String
+    Default: START
+    AllowedValues:
+        - START
+        - STOP
+        - TERMINATE
+
+Resources:
+  TerminateEC2Instance:
+    Type: 'Custom::TerminateEC2'
+    Version: '1.0'
+    Properties:
+      ServiceToken: !Join 
+        - ''
+        - - 'arn:aws:lambda:'
+          - !Ref 'AWS::Region'
+          - ':'
+          - !Ref 'AWS::AccountId'
+          - ':function:StartStopTerminateEC2-LambdaFunc'
+      region: !Ref 'AWS::Region'
+      terminateBy: !Ref TerminateBy
+      instanceIdName: !Ref InstanceIdName
+      action: !Ref Action
