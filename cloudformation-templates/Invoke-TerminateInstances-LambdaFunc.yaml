@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Basic EC2 Instance setup and its metadata.
+Description: Invokes Lambda function to terminate instances with their Name or Id.
 
 Parameters:
   TerminateBy:
